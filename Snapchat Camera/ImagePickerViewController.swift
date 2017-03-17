@@ -8,16 +8,32 @@
 
 // TODO: you'll need to import a library here
 import UIKit
+import AVFoundation
 
 // TODO: you'll need to edit this line to make your class conform to the AVCapturePhotoCaptureDelegate protocol
-class ImagePickerViewController: UIViewController {
+class ImagePickerViewController: UIViewController, AVCapturePhotoCaptureDelegate {
 
     @IBOutlet weak var imageViewOverlay: UIImageView!
     @IBOutlet weak var flipCameraButton: UIButton!
     @IBOutlet weak var takePhotoButton: UIButton!
     @IBOutlet weak var sendImageButton: UIButton!
     @IBOutlet weak var cancelButton: UIButton!
+    /// Creates a new capture session, and starts updating it using the user's
+    /// input device
+    ///
+    /// - Parameter devicePostion: location of user's camera - you'll need to figure out how to use this
+  
+    // manages real time capture activity from input devices to create output media (photo/video)
+    let captureSession = AVCaptureSession()
     
+    // the device we are capturing media from (i.e. front camera of an iPhone 7)
+    var captureDevice : AVCaptureDevice?
+    
+    // view that will let us preview what is being captured from the captureSession
+    var previewLayer : AVCaptureVideoPreviewLayer?
+    
+    // Object used to capture a single photo from our capture device
+    let photoOutput = AVCapturePhotoOutput()
     // The image to send as a Snap
     var selectedImage = UIImage()
     
@@ -26,12 +42,57 @@ class ImagePickerViewController: UIViewController {
     override func viewDidLoad() {
 
         super.viewDidLoad()
+        captureNewSession(devicePostion: nil)
         
         // TODO: call captureNewSession here
         
         toggleUI(isInPreviewMode: false)
     }
-    
+    func captureNewSession(devicePostion: AVCaptureDevicePosition?) {
+        
+        // specifies that we want high quality video captured from the device
+        captureSession.sessionPreset = AVCaptureSessionPresetHigh
+        var inp = captureSession.inputs
+        for i in inp! {
+            captureSession.removeInput(i as! AVCaptureInput)
+        }
+        captureSession.stopRunning()
+        if let deviceDiscoverySession = AVCaptureDeviceDiscoverySession(deviceTypes: [AVCaptureDeviceType.builtInWideAngleCamera],
+                                                                        mediaType: AVMediaTypeVideo, position: AVCaptureDevicePosition.unspecified) {
+            
+            // Iterate through available devices until we find one that works
+            for device in deviceDiscoverySession.devices {
+                
+                // only use device if it supports video
+                if (device.hasMediaType(AVMediaTypeVideo)) {
+                    if (device.position == AVCaptureDevicePosition.front) {
+                        
+                        captureDevice = device
+                        if captureDevice != nil {
+                            // Now we can begin capturing the session using the user's device!
+                            do {
+                                // TODO: uncomment this line, and add a parameter to `addInput`
+                                try captureSession.addInput(AVCaptureDeviceInput(device: captureDevice))
+                                if captureSession.canAddOutput(photoOutput) {
+                                    captureSession.addOutput(photoOutput)
+                                }
+                            }
+                            catch {
+                                print(error.localizedDescription)
+                            }
+                            
+                            if let previewLayer = AVCaptureVideoPreviewLayer(session: captureSession) { /* TODO: replace this line by creating preview layer from session */
+                                view.layer.addSublayer(previewLayer)
+                                previewLayer.frame = view.layer.frame
+                                // TODO: start running your session
+                                captureSession.startRunning()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     override func viewWillAppear(_ animated: Bool) {
         // hide the navigation bar while we are in this view
         navigationController?.navigationBar.isHidden = true
@@ -56,8 +117,22 @@ class ImagePickerViewController: UIViewController {
             selectedImage = squirrelImage
             toggleUI(isInPreviewMode: true)
         }
+        photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
     }
-    
+    /// Provides the delegate a captured image in a processed format (such as JPEG).
+    func capture(_ captureOutput: AVCapturePhotoOutput, didFinishProcessingPhotoSampleBuffer photoSampleBuffer: CMSampleBuffer?, previewPhotoSampleBuffer: CMSampleBuffer?, resolvedSettings: AVCaptureResolvedPhotoSettings, bracketSettings: AVCaptureBracketedStillImageSettings?, error: Error?) {
+        if let photoSampleBuffer = photoSampleBuffer {
+            // First, get the photo data using the parameters above
+            let photoData = AVCapturePhotoOutput.jpegPhotoDataRepresentation(forJPEGSampleBuffer: photoSampleBuffer, previewPhotoSampleBuffer: previewPhotoSampleBuffer)
+            
+                
+                // Then use this data to create a UIImage, and set it equal to `selectedImage`
+                selectedImage = UIImage.init(data: photoData!)!
+                    
+                    // This method updates the UI so the send button appears (no need to edit it)
+                    toggleUI(isInPreviewMode: true)
+        }
+    }
     
     /// If the front camera is being used, switches to the back camera,
     /// and vice versa
@@ -66,6 +141,16 @@ class ImagePickerViewController: UIViewController {
     @IBAction func flipCamera(_ sender: UIButton) {
         // TODO: allow user to switch between front and back camera
         // you will need to create a new session using 'captureNewSession'
+
+        
+    
+        if captureDevice?.position == AVCaptureDevicePosition.back {
+            captureNewSession(devicePostion: AVCaptureDevicePosition.front)
+        }
+        else {
+            captureNewSession(devicePostion: AVCaptureDevicePosition.back)
+        }
+        toggleUI(isInPreviewMode: true)
     }
 
     
